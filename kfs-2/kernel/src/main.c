@@ -1,6 +1,7 @@
 #include "types.h"
 #include "vga.h"
 #include "keyboard.h"
+#include "gdt.h"    // New: include GDT definitions
 
 static uint16_t* const VGA_MEMORY = (uint16_t*)0xB8000;
 static const size_t VGA_WIDTH = 80;
@@ -10,7 +11,6 @@ static size_t terminal_row;
 static size_t terminal_column;
 static uint8_t terminal_color;
 
-// ASCII Art Header
 const char* HEADER[] = {
     "    AAAA    N   N  TTTTT  H   H  RRRR   OOO  DDDD   RRRR  ",
     "   A    A   NN  N    T    H   H  R   R O   O D   D  R   R ",
@@ -18,13 +18,12 @@ const char* HEADER[] = {
     "   A    A   N  NN    T    H   H  R  R  O   O D   D  R  R  ",
     "   A    A   N   N    T    H   H  R   R  OOO  DDDD   R   R ",
     "",
-    "                     Anthrodr - KFS-1                     ",
+    "                Anthrodr - KFS-2 (GDT & Stack)              ",
     "",
     NULL
 };
 
-
-// Make terminal_putchar visible to other files
+/* Make terminal_putchar visible to other files */
 void terminal_putchar(char c);
 
 static void terminal_initialize(void) 
@@ -33,7 +32,7 @@ static void terminal_initialize(void)
     terminal_column = 0;
     terminal_color = vga_entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK);
 
-    // Clear screen
+    /* Clear screen */
     for (size_t y = 0; y < VGA_HEIGHT; y++) {
         for (size_t x = 0; x < VGA_WIDTH; x++) {
             const size_t index = y * VGA_WIDTH + x;
@@ -103,25 +102,70 @@ static void print_header(void)
     for (size_t i = 0; HEADER[i] != NULL; i++) {
         terminal_writestr_centered(HEADER[i], i);
     }
-
     terminal_row = 10;
     terminal_column = 0;
 }
 
+/* Utility: Print a 32-bit number in hexadecimal */
+static void print_hex(uint32_t num) {
+    char hex_chars[] = "0123456789ABCDEF";
+    char str[9];
+    str[8] = '\0';
+    for (int i = 7; i >= 0; i--) {
+        str[i] = hex_chars[num & 0xF];
+        num >>= 4;
+    }
+    terminal_write(str);
+}
+
+/* Print the current kernel stack pointer (ESP) */
+static void print_kernel_stack(void)
+{
+    uint32_t esp;
+    
+    // Retrieve current ESP with a memory clobber
+    asm volatile("movl %%esp, %0" : "=r"(esp) : : "memory");
+
+    terminal_write("\nKernel stack pointer (ESP): 0x");
+    print_hex(esp);
+    terminal_write("\n");
+    
+}
+
+
 void kernel_main(void) 
 {
     terminal_initialize();
+    
+    /* Initialize the Global Descriptor Table */
+    init_gdt();
+
     print_header();
     
     terminal_color = vga_entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK);
     
-    terminal_write("\nWelcome to KFS-1!\n");
-    terminal_write("42 School Kernel From Scratch - v1.0\n\n");
+    terminal_write("\nWelcome to KFS-2!\n");
+    terminal_write("42 School Kernel From Scratch - v2.0\n\n");
+    terminal_write("Printing kernel stack info:\n");
+    print_kernel_stack();
+
     terminal_write("Type something...\n");
 
+    /* Initialize the keyboard */
     init_keyboard();
 
+    // Main input loop: only call keyboard_handler when a key is available.
     while (1) {
-        keyboard_handler();
+        // Check if a key is available.
+        if (inb(KEYBOARD_STATUS_PORT) & 0x01) {
+            keyboard_handler();
+            /* 
+             * Wait until the key is released to avoid handling the same key 
+             * repeatedly. This is a simple debouncing approach.
+             */
+            while (inb(KEYBOARD_STATUS_PORT) & 0x01) {
+                // busy-wait: you may insert a small delay here if desired.
+            }
+        }
     }
 }
