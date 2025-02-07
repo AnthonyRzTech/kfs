@@ -15,7 +15,8 @@ LDFLAGS = -m elf_i386 -T boot/linker.ld -nostdlib
 KERNEL_OBJS = boot/boot.o \
               kernel/src/main.o \
               kernel/src/keyboard.o \
-              kernel/src/gdt.o
+              kernel/src/gdt.o \
+              kernel/src/shell.o
 
 # Targets
 .PHONY: all clean run image

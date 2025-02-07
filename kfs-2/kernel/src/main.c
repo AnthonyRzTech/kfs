@@ -1,7 +1,8 @@
 #include "types.h"
 #include "vga.h"
 #include "keyboard.h"
-#include "gdt.h"    // New: include GDT definitions
+#include "gdt.h"
+#include "shell.h"
 
 static uint16_t* const VGA_MEMORY = (uint16_t*)0xB8000;
 static const size_t VGA_WIDTH = 80;
@@ -73,7 +74,7 @@ void terminal_putchar(char c)
     }
 }
 
-static void terminal_write(const char* str) 
+void terminal_write(const char* str) 
 {
     for (size_t i = 0; str[i] != '\0'; i++)
         terminal_putchar(str[i]);
@@ -149,23 +150,16 @@ void kernel_main(void)
     terminal_write("Printing kernel stack info:\n");
     print_kernel_stack();
 
-    terminal_write("Type something...\n");
+    terminal_write("Type your commands below.\n\n");
 
-    /* Initialize the keyboard */
+    /* Initialize the keyboard (if additional initialization is needed) */
     init_keyboard();
 
-    // Main input loop: only call keyboard_handler when a key is available.
+    /* Launch the shell */
+    shell_run();
+
+    // After exiting the shell, halt the CPU.
     while (1) {
-        // Check if a key is available.
-        if (inb(KEYBOARD_STATUS_PORT) & 0x01) {
-            keyboard_handler();
-            /* 
-             * Wait until the key is released to avoid handling the same key 
-             * repeatedly. This is a simple debouncing approach.
-             */
-            while (inb(KEYBOARD_STATUS_PORT) & 0x01) {
-                // busy-wait: you may insert a small delay here if desired.
-            }
-        }
+        asm volatile("hlt");
     }
 }
